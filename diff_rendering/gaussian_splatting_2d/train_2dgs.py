@@ -255,8 +255,6 @@ def training_report(logger, iteration, Ll1, loss, l1_loss, elapsed, testing_iter
         torch.cuda.empty_cache()
 
 
-    
-
 def train_static_2dgs(gaussian_args,scene_info,mesh=None,logger=None):
     
     gaussians = training(gaussian_args.dataset, gaussian_args.opt, gaussian_args.pipe, gaussian_args.testing_iterations, 
