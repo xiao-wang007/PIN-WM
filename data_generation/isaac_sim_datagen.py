@@ -396,8 +396,53 @@ def create_usd_object(stage: Any, asset_path: str) -> Any:
 
 
 def create_mesh_object(stage: Any, mesh_path: str) -> Any:
-    """Create a USD Mesh prim from OBJ/STL/PLY via trimesh."""
+    """Import an OBJ/STL/PLY mesh into the stage, preserving textures when present.
 
+    For OBJ files that have a companion .mtl and texture images, Isaac Sim's
+    native asset importer is used so that UsdShade materials and UV maps are
+    wired up automatically.  For geometry-only formats (STL, PLY) or when the
+    importer is unavailable, the script falls back to a trimesh-based Mesh prim
+    with a flat display colour.
+    """
+    mesh_path_resolved = str(Path(mesh_path).expanduser().resolve())
+    object_path = "/World/TargetObject"
+
+    from pxr import UsdGeom
+
+    # --- Try Isaac's native OBJ importer first (preserves MTL / textures) ---
+    if mesh_path_resolved.lower().endswith(".obj"):
+        try:
+            import omni.kit.asset_converter as converter
+            import omni.kit.app
+
+            usd_out = str(Path(mesh_path_resolved).with_suffix(".usd"))
+            context = converter.AssetConverterContext()
+            context.ignore_materials = False
+            context.ignore_camera = True
+            context.ignore_animations = True
+            context.single_mesh = False  # keep sub-meshes so UVs are preserved
+
+            task = converter.get_instance().create_converter_task(
+                mesh_path_resolved, usd_out, None, context
+            )
+            # Drive the conversion by pumping the Kit event loop
+            app = omni.kit.app.get_app()
+            while not task.is_finished():
+                app.update()
+            if not task.is_successful():
+                raise RuntimeError(task.get_error_message())
+
+            # Place the converted USD under a child prim so that the parent
+            # Xform (/World/TargetObject) stays compatible with XformCommonAPI.
+            object_xform = UsdGeom.Xform.Define(stage, object_path)
+            mesh_ref_prim = UsdGeom.Xform.Define(stage, f"{object_path}/Mesh")
+            mesh_ref_prim.GetPrim().GetReferences().AddReference(usd_out)
+            print(f"  Imported {Path(mesh_path).name} via Isaac asset converter (textures preserved)")
+            return object_xform.GetPrim()
+        except Exception as exc:
+            print(f"  [WARN] Isaac asset converter failed ({exc}); falling back to trimesh loader")
+
+    # --- Fallback: trimesh geometry-only import ---
     try:
         import trimesh
     except ImportError as exc:
@@ -406,9 +451,7 @@ def create_mesh_object(stage: Any, mesh_path: str) -> Any:
             "Install it with Isaac's python.sh -m pip install trimesh, or pass --object-usd."
         ) from exc
 
-    from pxr import UsdGeom
-
-    loaded = trimesh.load(str(Path(mesh_path).expanduser().resolve()), force="scene")
+    loaded = trimesh.load(mesh_path_resolved, force="scene")
     if isinstance(loaded, trimesh.Scene):
         mesh = loaded.to_geometry()
     else:
@@ -417,13 +460,14 @@ def create_mesh_object(stage: Any, mesh_path: str) -> Any:
     if mesh.vertices.size == 0 or mesh.faces.size == 0:
         raise ValueError(f"Mesh has no vertices/faces: {mesh_path}")
 
-    object_xform = UsdGeom.Xform.Define(stage, "/World/TargetObject")
-    mesh_prim = UsdGeom.Mesh.Define(stage, "/World/TargetObject/Mesh")
-    mesh_prim.CreatePointsAttr([tuple(map(float, vertex)) for vertex in np.asarray(mesh.vertices)])
+    object_xform = UsdGeom.Xform.Define(stage, object_path)
+    mesh_prim = UsdGeom.Mesh.Define(stage, f"{object_path}/Mesh")
+    mesh_prim.CreatePointsAttr([tuple(map(float, v)) for v in np.asarray(mesh.vertices)])
     mesh_prim.CreateFaceVertexCountsAttr([3] * len(mesh.faces))
     mesh_prim.CreateFaceVertexIndicesAttr(np.asarray(mesh.faces, dtype=np.int64).reshape(-1).tolist())
     mesh_prim.CreateSubdivisionSchemeAttr("none")
     create_display_color(mesh_prim.GetPrim(), (0.05, 0.35, 0.9))
+    print(f"  Imported {Path(mesh_path).name} via trimesh (geometry only, no texture)")
     return object_xform.GetPrim()
 
 

@@ -1,0 +1,33 @@
+<?xml version="1.0" ?>
+<!-- YCB object 005_tomato_soup_can
+     Mesh source: YCB benchmark dataset (google_16k)
+     Dimensions:  ~68 x 68 x 102 mm
+     Mass:        0.411 kg (YCB measured value)
+     Inertia:     approximated as solid cylinder r=0.034 m, h=0.101 m
+-->
+<robot name="tomato_soup_can">
+
+  <link name="tomato_soup_can">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0.411"/>
+      <!-- Ixx = Iyy = m*(3r^2 + h^2)/12,  Izz = m*r^2/2 -->
+      <inertia ixx="0.000468" ixy="0" ixz="0"
+               iyy="0.000468" iyz="0"
+               izz="0.000238"/>
+    </inertial>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="textured.obj"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="textured.obj"/>
+      </geometry>
+    </visual>
+  </link>
+
+</robot>
